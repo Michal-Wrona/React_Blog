@@ -1,3 +1,16 @@
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Backend .NET
+backend/**/bin/
+backend/**/obj/
+backend/.vs/
+backend/**/appsettings.*.json
+backend/**/*.user
+
+
 # Logs
 logs
 *.log
