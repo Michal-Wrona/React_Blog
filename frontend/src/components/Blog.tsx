@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
-import { posts } from "../data"; // Importujemy nasze dane
+import { useEffect, useState } from "react";
+import { fetchPosts } from "../data";
+import type { PostType } from "../data";
 
 
 // // 🔥 Typ dla posta
@@ -15,15 +17,26 @@ import { posts } from "../data"; // Importujemy nasze dane
 // ];
 
 function Blog() {
+  const [posts, setPosts] = useState<PostType[]>([]);
+
+  useEffect(() => {
+    let mounted = true;
+    fetchPosts().then((data) => {
+      if (mounted) setPosts(data);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-purple-50 py-8">
-      <h1 className="text-4xl font-bold text-gray-800 mb-6">
-        Blog
-      </h1>
+      <h1 className="text-4xl font-bold text-gray-800 mb-6">Blog</h1>
 
       {posts.map((post) => (
         <div key={post.id}>
-          <Link to={`/post/${post.id}`}
+          <Link
+            to={`/post/${post.id}`}
             className="text-lg text-gray-700 hover:text-purple-600 hover:font-semibold hover:underline transition-all duration-200"
           >
             {post.title}
