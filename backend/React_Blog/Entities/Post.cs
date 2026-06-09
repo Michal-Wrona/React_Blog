@@ -5,5 +5,6 @@
         public int Id { get; set; }
         public required string Title { get; set; }
         public string Content { get; set; } = null!;
+        public ICollection<Image> Images { get; set; } = [];
     }
 }

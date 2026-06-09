@@ -18,6 +18,33 @@ namespace React_Blog.Data
             return await context.Posts.FindAsync(id);
         }
 
+        public async Task<Post?> GetPostByIdWithImagesAsync(int id)
+        {
+            return await context.Posts
+                .AsNoTracking()
+                .Include(p => p.Images)
+                .FirstOrDefaultAsync(p => p.Id == id);
+        }
+
+        public async Task<Post?> GetPostForUpdateAsync(int id)
+        {
+            return await context.Posts
+                .Include(p => p.Images)
+                .FirstOrDefaultAsync(p => p.Id == id);
+        }
+
+        public async Task<int> GetImageCountForPostAsync(int postId)
+        {
+            return await context.Images
+                .CountAsync(i => i.PostId == postId);
+        }
+
+        public async Task AddImageAsync(Image image)
+        {
+            await context.Images.AddAsync(image);
+            await context.SaveChangesAsync();
+        }
+
         public async Task AddPostAsync(Post post)
         {
             await context.Posts.AddAsync(post);
