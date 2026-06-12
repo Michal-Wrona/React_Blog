@@ -1,5 +1,6 @@
 using React_Blog.Helpers;
 using React_Blog.Interfaces;
+using SixLabors.ImageSharp;
 
 namespace React_Blog.Services
 {
@@ -26,11 +27,32 @@ namespace React_Blog.Services
             var fileName = $"{Guid.NewGuid()}{extension}";
             var filePath = Path.Combine(uploadPath, fileName);
 
-            await using var stream = new FileStream(filePath, FileMode.Create);
-            await file.CopyToAsync(stream);
+            try
+            {
+                // Wczytanie obrazu weryfikuje, że plik to faktycznie obraz (nie np. przemianowany .exe),
+                // a ponowny zapis koduje od nowa tylko piksele, usuwając ewentualny złośliwy ładunek.
+                await using var inputStream = file.OpenReadStream();
+                using var image = await Image.LoadAsync(inputStream);
+                await image.SaveAsync(filePath);
+            }
+            catch (Exception ex) when (ex is UnknownImageFormatException or InvalidImageContentException)
+            {
+                return (null, "Plik nie jest prawidłowym obrazem lub jest uszkodzony.");
+            }
 
             var url = $"/{ImageSettings.UploadFolder}/{fileName}";
             return (url, null);
+        }
+
+        public void DeleteImageFile(string url)
+        {
+            var relativePath = url.TrimStart('/');
+            var webRootPath = environment.WebRootPath
+                ?? Path.Combine(environment.ContentRootPath, "wwwroot");
+            var filePath = Path.Combine(webRootPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+
+            if (File.Exists(filePath))
+                File.Delete(filePath);
         }
     }
 }

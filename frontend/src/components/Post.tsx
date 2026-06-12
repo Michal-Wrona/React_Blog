@@ -58,6 +58,19 @@ function Post() {
         {post.content}
       </div>
 
+      {post.images.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
+          {post.images.map((image) => (
+            <img
+              key={image.id}
+              src={image.url}
+              alt={post.title}
+              className="w-full rounded-xl object-cover"
+            />
+          ))}
+        </div>
+      )}
+
       <Link
         to="/blog"
         className="inline-block bg-gray-700 hover:bg-gray-800 text-white font-medium px-3 py-1 rounded-xl transition-colors"

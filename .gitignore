@@ -37,3 +37,12 @@ dist-ssr
 *.sw?
 
 .vs/
+
+# Uploaded post images (keep folder via .gitkeep)
+backend/React_Blog/wwwroot/uploads/images/*
+!backend/React_Blog/wwwroot/uploads/images/.gitkeep
+
+# SQLite database (local dev data)
+backend/React_Blog/*.db
+backend/React_Blog/*.db-shm
+backend/React_Blog/*.db-wal

@@ -26,6 +26,12 @@ namespace React_Blog.Controllers
         [HttpPost]
         public async Task<ActionResult<Post>> CreatePost(Post post)
         {
+            var titleError = PostValidation.ValidateCreateTitle(post.Title);
+            if (titleError != null) return BadRequest(titleError);
+
+            var contentError = PostValidation.ValidateCreateContent(post.Content);
+            if (contentError != null) return BadRequest(contentError);
+
             await postRepository.AddPostAsync(post);
             return CreatedAtAction(nameof(GetPost), new { id = post.Id }, post);
         }
@@ -53,6 +59,19 @@ namespace React_Blog.Controllers
             await postRepository.AddImageAsync(image);
 
             return Ok(image);
+        }
+
+        [HttpDelete("{postId}/images/{imageId}")]
+        public async Task<IActionResult> DeletePhoto(int postId, int imageId)
+        {
+            var image = await postRepository.GetImageByIdAsync(imageId);
+            if (image == null) return NotFound();
+            if (image.PostId != postId) return BadRequest();
+
+            imageService.DeleteImageFile(image.Url);
+            await postRepository.DeleteImageAsync(imageId);
+
+            return NoContent();
         }
 
         [HttpPut]

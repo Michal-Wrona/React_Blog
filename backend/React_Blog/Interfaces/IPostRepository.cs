@@ -11,6 +11,8 @@ namespace React_Blog.Interfaces
         Task<int> GetImageCountForPostAsync(int postId);
         Task AddPostAsync(Post post);
         Task AddImageAsync(Image image);
+        Task<Image?> GetImageByIdAsync(int imageId);
+        Task DeleteImageAsync(int imageId);
         Task UpdatePostAsync(Post post);
         Task DeletePostAsync(int id);
     }

@@ -45,6 +45,18 @@ namespace React_Blog.Data
             await context.SaveChangesAsync();
         }
 
+        public async Task<Image?> GetImageByIdAsync(int imageId)
+        {
+            return await context.Images.FindAsync(imageId);
+        }
+
+        public async Task DeleteImageAsync(int imageId)
+        {
+            await context.Images
+                .Where(i => i.Id == imageId)
+                .ExecuteDeleteAsync();
+        }
+
         public async Task AddPostAsync(Post post)
         {
             await context.Posts.AddAsync(post);
