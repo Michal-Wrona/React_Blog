@@ -32,6 +32,21 @@ namespace React_Blog.Controllers
             var contentError = PostValidation.ValidateCreateContent(post.Content);
             if (contentError != null) return BadRequest(contentError);
 
+            if (post.PostType == PostType.Simple)
+            {
+                post.VisualStyle = null;
+                post.VisualLayout = null;
+            }
+            else
+            {
+                post.VisualStyle ??= new VisualStyle();
+                var visualError = PostValidation.ValidateVisualPost(post);
+                if (visualError != null) return BadRequest(visualError);
+
+                post.VisualLayout ??= new VisualLayout();
+                SanitizeVisualLayout(post.VisualLayout);
+            }
+
             await postRepository.AddPostAsync(post);
             return CreatedAtAction(nameof(GetPost), new { id = post.Id }, post);
         }
@@ -61,6 +76,45 @@ namespace React_Blog.Controllers
             return Ok(image);
         }
 
+        [HttpPost("{postId}/background-image")]
+        [Consumes("multipart/form-data")]
+        public async Task<ActionResult<string>> UploadBackgroundImage(int postId, IFormFile file)
+        {
+            var post = await postRepository.GetPostForUpdateAsync(postId);
+            if (post == null) return NotFound("Post not found");
+            if (post.PostType != PostType.Visual)
+                return BadRequest("Tylko posty wizualne mogą mieć tło graficzne.");
+
+            var result = await imageService.SaveImageAsync(file);
+            if (result.Error != null) return BadRequest(result.Error);
+
+            if (!string.IsNullOrEmpty(post.VisualStyle?.BackgroundImageUrl))
+                imageService.DeleteImageFile(post.VisualStyle.BackgroundImageUrl);
+
+            post.VisualStyle ??= new VisualStyle();
+            post.VisualStyle.BackgroundImageUrl = result.Url;
+            await postRepository.UpdatePostAsync(post);
+
+            return Ok(result.Url);
+        }
+
+        [HttpDelete("{postId}/background-image")]
+        public async Task<IActionResult> DeleteBackgroundImage(int postId)
+        {
+            var post = await postRepository.GetPostForUpdateAsync(postId);
+            if (post == null) return NotFound();
+            if (post.PostType != PostType.Visual) return BadRequest();
+
+            if (!string.IsNullOrEmpty(post.VisualStyle?.BackgroundImageUrl))
+            {
+                imageService.DeleteImageFile(post.VisualStyle.BackgroundImageUrl);
+                post.VisualStyle.BackgroundImageUrl = null;
+                await postRepository.UpdatePostAsync(post);
+            }
+
+            return NoContent();
+        }
+
         [HttpDelete("{postId}/images/{imageId}")]
         public async Task<IActionResult> DeletePhoto(int postId, int imageId)
         {
@@ -68,16 +122,68 @@ namespace React_Blog.Controllers
             if (image == null) return NotFound();
             if (image.PostId != postId) return BadRequest();
 
+            var post = await postRepository.GetPostForUpdateAsync(postId);
+
             imageService.DeleteImageFile(image.Url);
             await postRepository.DeleteImageAsync(imageId);
 
+            if (post?.VisualLayout != null)
+            {
+                post.VisualLayout.Placements.RemoveAll(p => p.ImageId == imageId);
+                await postRepository.UpdatePostAsync(post);
+            }
+
             return NoContent();
+        }
+
+        private static void SanitizeVisualLayout(VisualLayout layout)
+        {
+            foreach (var placement in layout.Placements)
+            {
+                if (placement.CaptionEnabled && placement.Caption != null)
+                    placement.Caption = VisualLayoutSettings.SanitizeCaption(placement.Caption);
+            }
         }
 
         [HttpPut]
         public async Task<IActionResult> UpdatePost(Post post)
         {
-            await postRepository.UpdatePostAsync(post);
+            var existing = await postRepository.GetPostForUpdateAsync(post.Id);
+            if (existing == null) return NotFound();
+
+            var titleError = PostValidation.ValidateCreateTitle(post.Title);
+            if (titleError != null) return BadRequest(titleError);
+
+            var contentError = PostValidation.ValidateCreateContent(post.Content);
+            if (contentError != null) return BadRequest(contentError);
+
+            existing.Title = post.Title;
+            existing.Content = post.Content;
+
+            if (existing.PostType == PostType.Visual)
+            {
+                if (post.VisualStyle == null)
+                    return BadRequest("Post wizualny wymaga ustawień wyglądu.");
+
+                var visualError = VisualStyleSettings.Validate(post.VisualStyle);
+                if (visualError != null) return BadRequest(visualError);
+
+                existing.VisualStyle = post.VisualStyle;
+
+                existing.VisualLayout ??= new VisualLayout();
+                if (post.VisualLayout != null)
+                {
+                    SanitizeVisualLayout(post.VisualLayout);
+
+                    var imageIds = existing.Images.Select(i => i.Id).ToHashSet();
+                    var layoutError = VisualLayoutSettings.Validate(post.VisualLayout, imageIds);
+                    if (layoutError != null) return BadRequest(layoutError);
+
+                    existing.VisualLayout = post.VisualLayout;
+                }
+            }
+
+            await postRepository.UpdatePostAsync(existing);
             return NoContent();
         }
 

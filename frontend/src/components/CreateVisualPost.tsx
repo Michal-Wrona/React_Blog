@@ -1,50 +1,84 @@
 import { useRef, useState } from "react";
 import type { ChangeEvent, DragEvent, FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import type { Image, Post, CreatePostRequest, UpdatePostRequest } from "../types";
+import type { Image, Post, UpdatePostRequest, VisualLayout, VisualStyle } from "../types";
 import AlertModal from "./AlertModal";
-import { validateForm } from "../utils/postFormUtils";
+import PostStylePanel from "./PostStylePanel";
+import VisualPostCanvas from "./VisualPostCanvas";
+import VisualPostPreviewShell from "./VisualPostPreviewShell";
+import {
+  DEFAULT_VISUAL_STYLE,
+  validateForm,
+} from "../utils/postFormUtils";
+import {
+  createDefaultPlacement,
+  EMPTY_VISUAL_LAYOUT,
+  loadImageAspectRatio,
+  normalizeVisualLayout,
+  removePlacement,
+  upsertPlacement,
+} from "../utils/visualLayoutUtils";
 
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_IMAGES_PER_POST = 5;
 
-function CreatePost() {
+function CreateVisualPost() {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
+  const [visualStyle, setVisualStyle] = useState<VisualStyle>(DEFAULT_VISUAL_STYLE);
+  const [visualLayout, setVisualLayout] = useState<VisualLayout>(EMPTY_VISUAL_LAYOUT);
   const [postId, setPostId] = useState<number | null>(null);
   const [images, setImages] = useState<Image[]>([]);
+  const [selectedImageId, setSelectedImageId] = useState<number | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [deletingImageId, setDeletingImageId] = useState<number | null>(null);
+  const [isUploadingBackground, setIsUploadingBackground] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  function validateCreateForm(): string | null {
-    return validateForm(title, content);
-  }
-
   async function ensurePostExists(): Promise<number | null> {
-    const validationError = validateCreateForm();
+    const validationError = validateForm(title, content);
     if (validationError) {
       setError(validationError);
       return null;
     }
 
     if (postId !== null) {
+      const updatedPost: UpdatePostRequest = {
+        id: postId,
+        title,
+        content,
+        visualStyle,
+        visualLayout,
+      };
+
+      const response = await fetch("/api/Post", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedPost),
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Nie udało się zapisać posta.");
+      }
+
       return postId;
     }
 
-    const newPost: CreatePostRequest = { title, content, postType: "simple" };
-
     const response = await fetch("/api/Post", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(newPost),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title,
+        content,
+        postType: "visual",
+        visualStyle,
+        visualLayout,
+      }),
     });
 
     if (!response.ok) {
@@ -55,7 +89,76 @@ function CreatePost() {
     const createdPost: Post = await response.json();
     setPostId(createdPost.id);
     setImages(createdPost.images ?? []);
+    if (createdPost.visualStyle) {
+      setVisualStyle(createdPost.visualStyle);
+    }
+    if (createdPost.visualLayout) {
+      setVisualLayout(normalizeVisualLayout(createdPost.visualLayout));
+    }
     return createdPost.id;
+  }
+
+  async function handleBackgroundUpload(file: File) {
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      setError("Niedozwolony format pliku. Dozwolone: jpg, png, webp.");
+      return;
+    }
+
+    setError(null);
+    setIsUploadingBackground(true);
+
+    try {
+      const currentPostId = await ensurePostExists();
+      if (currentPostId === null) {
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(`/api/Post/${currentPostId}/background-image`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Nie udało się dodać tła.");
+      }
+
+      const url: string = await response.json();
+      setVisualStyle((previous) => ({ ...previous, backgroundImageUrl: url }));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Wystąpił błąd podczas dodawania tła.";
+      setError(message);
+    } finally {
+      setIsUploadingBackground(false);
+    }
+  }
+
+  async function handleBackgroundRemove() {
+    if (postId === null) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/Post/${postId}/background-image`, {
+        method: "DELETE",
+      });
+
+      if (!response.ok) {
+        throw new Error("Nie udało się usunąć tła.");
+      }
+
+      setVisualStyle((previous) => ({ ...previous, backgroundImageUrl: null }));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Wystąpił błąd podczas usuwania tła.";
+      setError(message);
+    }
   }
 
   async function uploadFile(file: File) {
@@ -92,7 +195,30 @@ function CreatePost() {
       }
 
       const createdImage: Image = await response.json();
+      const aspectRatio = await loadImageAspectRatio(createdImage.url);
+      const currentLayout = normalizeVisualLayout(visualLayout);
+      const placement = createDefaultPlacement(
+        createdImage,
+        aspectRatio,
+        currentLayout.placements.length
+      );
+      const nextLayout = upsertPlacement(currentLayout, placement);
+
       setImages((previous) => [...previous, createdImage]);
+      setVisualLayout(nextLayout);
+      setSelectedImageId(createdImage.id);
+
+      await fetch("/api/Post", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: currentPostId,
+          title,
+          content,
+          visualStyle,
+          visualLayout: nextLayout,
+        } satisfies UpdatePostRequest),
+      });
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Wystąpił błąd podczas dodawania zdjęcia.";
@@ -138,7 +264,6 @@ function CreatePost() {
     }
 
     setError(null);
-    setDeletingImageId(imageId);
 
     try {
       const response = await fetch(`/api/Post/${postId}/images/${imageId}`, {
@@ -149,13 +274,14 @@ function CreatePost() {
         throw new Error("Nie udało się usunąć zdjęcia.");
       }
 
+      const nextLayout = removePlacement(visualLayout, imageId);
       setImages((previous) => previous.filter((image) => image.id !== imageId));
+      setVisualLayout(nextLayout);
+      setSelectedImageId(null);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Wystąpił błąd podczas usuwania zdjęcia.";
       setError(message);
-    } finally {
-      setDeletingImageId(null);
     }
   }
 
@@ -163,7 +289,7 @@ function CreatePost() {
     event.preventDefault();
     setError(null);
 
-    const validationError = validateCreateForm();
+    const validationError = validateForm(title, content);
     if (validationError) {
       setError(validationError);
       return;
@@ -172,46 +298,12 @@ function CreatePost() {
     setIsSubmitting(true);
 
     try {
-      if (postId !== null) {
-        const updatedPost: UpdatePostRequest = {
-          id: postId,
-          title,
-          content,
-        };
-
-        const response = await fetch("/api/Post", {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(updatedPost),
-        });
-
-        if (!response.ok) {
-          throw new Error("Nie udało się zapisać posta.");
-        }
-
-        navigate(`/post/${postId}`);
+      const currentPostId = await ensurePostExists();
+      if (currentPostId === null) {
         return;
       }
 
-      const newPost: CreatePostRequest = { title, content, postType: "simple" };
-
-      const response = await fetch("/api/Post", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(newPost),
-      });
-
-      if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Nie udało się utworzyć posta.");
-      }
-
-      const createdPost: Post = await response.json();
-      navigate(`/post/${createdPost.id}`);
+      navigate(`/post/${currentPostId}`);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Wystąpił błąd podczas tworzenia posta.";
@@ -225,10 +317,13 @@ function CreatePost() {
 
   return (
     <div className="min-h-screen bg-purple-50 py-8">
-      <div className="max-w-3xl mx-auto px-6">
-        <h1 className="text-4xl font-bold text-gray-800 mb-6">
-          Dodaj post
+      <div className="max-w-6xl mx-auto px-6">
+        <h1 className="text-4xl font-bold text-gray-800 mb-2">
+          Post z własnym układem
         </h1>
+        <p className="text-gray-600 mb-6">
+          Dostosuj wygląd i rozmieść zdjęcia na kanwasie. Podgląd pokazuje efekt końcowy.
+        </p>
 
         <Link to="/post/new" className="text-purple-600 hover:text-purple-800 text-sm mb-4 inline-block">
           ← Zmień typ posta
@@ -238,71 +333,67 @@ function CreatePost() {
           <AlertModal message={error} onClose={() => setError(null)} />
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label htmlFor="title" className="block text-gray-700 font-medium mb-2">
-              Tytuł
-            </label>
-            <input
-              id="title"
-              type="text"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              className="w-full rounded-xl border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              required
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-5 max-w-2xl">
+              <div>
+                <label htmlFor="title" className="block text-gray-700 font-medium mb-2">
+                  Tytuł
+                </label>
+                <input
+                  id="title"
+                  type="text"
+                  value={title}
+                  onChange={(event) => setTitle(event.target.value)}
+                  className="w-full rounded-xl border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label htmlFor="content" className="block text-gray-700 font-medium mb-2">
+                  Treść
+                </label>
+                <textarea
+                  id="content"
+                  value={content}
+                  onChange={(event) => setContent(event.target.value)}
+                  className="min-h-40 w-full rounded-xl border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required
+                />
+              </div>
+
+              <PostStylePanel
+                style={visualStyle}
+                onChange={setVisualStyle}
+                postId={postId}
+                onBackgroundUpload={handleBackgroundUpload}
+                onBackgroundRemove={handleBackgroundRemove}
+                isUploadingBackground={isUploadingBackground}
             />
-            <p className="text-gray-400 text-sm mt-1">
-              Minimum 5 znaków, nie może składać się wyłącznie ze spacji.
-            </p>
           </div>
 
-          <div>
-            <label htmlFor="content" className="block text-gray-700 font-medium mb-2">
-              Treść
-            </label>
-            <textarea
-              id="content"
-              value={content}
-              onChange={(event) => setContent(event.target.value)}
-              className="min-h-48 w-full rounded-xl border border-gray-300 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              required
+          <VisualPostPreviewShell label="Kanwas — układ posta">
+            <VisualPostCanvas
+              title={title}
+              content={content}
+              style={visualStyle}
+              images={images}
+              layout={visualLayout}
+              editable
+              placeholder
+              selectedImageId={selectedImageId}
+              onSelectImage={setSelectedImageId}
+              onLayoutChange={setVisualLayout}
+              onDeleteImage={handleDeleteImage}
             />
-            <p className="text-gray-400 text-sm mt-1">
-              Minimum 30 znaków, znaki białe mogą stanowić maksymalnie połowę treści.
-            </p>
-          </div>
+          </VisualPostPreviewShell>
 
           <div>
             <span className="block text-gray-700 font-medium mb-2">
-              Zdjęcia
+              Dodaj zdjęcie na kanwas
             </span>
 
-            {images.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
-                {images.map((image) => (
-                  <div key={image.id} className="relative group">
-                    <img
-                      src={image.url}
-                      alt=""
-                      className="w-full h-32 rounded-xl object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteImage(image.id)}
-                      disabled={deletingImageId === image.id}
-                      className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white font-medium w-8 h-8 rounded-xl transition-colors flex items-center justify-center"
-                      aria-label="Usuń zdjęcie"
-                    >
-                      {deletingImageId === image.id ? "…" : "×"}
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 mb-3">Ten post nie ma jeszcze zdjęć.</p>
-            )}
-
-            {canAddMoreImages && (
+            {canAddMoreImages ? (
               <div
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
@@ -339,12 +430,10 @@ function CreatePost() {
                 </label>
 
                 <p className="text-gray-400 text-sm mt-3">
-                  JPG, PNG lub WebP · maks. {MAX_IMAGES_PER_POST} zdjęć
+                  JPG, PNG lub WebP · maks. {MAX_IMAGES_PER_POST} zdjęć · wymaga tytułu i treści
                 </p>
               </div>
-            )}
-
-            {!canAddMoreImages && (
+            ) : (
               <p className="text-gray-500 text-sm">
                 Osiągnięto limit {MAX_IMAGES_PER_POST} zdjęć na post.
               </p>
@@ -373,4 +462,4 @@ function CreatePost() {
   );
 }
 
-export default CreatePost;
+export default CreateVisualPost;

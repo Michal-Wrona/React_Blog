@@ -13,13 +13,25 @@ function Blog() {
         const response = await fetch("/api/Post");
 
         if (!response.ok) {
+          if (response.status >= 500) {
+            throw new Error(
+              "Serwer zwrócił błąd. Upewnij się, że backend jest uruchomiony i zrestartowany po ostatnich zmianach."
+            );
+          }
+
           throw new Error("Nie udało się pobrać postów.");
         }
 
         const data: Post[] = await response.json();
         setPosts(data);
       } catch (error) {
-        setError("Wystąpił błąd podczas pobierania postów.");
+        const message =
+          error instanceof TypeError
+            ? "Nie można połączyć się z serwerem. Uruchom backend (dotnet watch) na porcie 5185."
+            : error instanceof Error
+              ? error.message
+              : "Wystąpił błąd podczas pobierania postów.";
+        setError(message);
       } finally {
         setIsLoading(false);
       }

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import type { Post as PostType } from "../types";
+import VisualPostRenderer from "./VisualPostRenderer";
+import { DEFAULT_VISUAL_STYLE, VISUAL_POST_SHELL_CLASS } from "../utils/postFormUtils";
 
 function Post() {
   const { id } = useParams();
@@ -39,12 +41,24 @@ function Post() {
     return <div className="p-10 text-red-600">Nie znaleziono posta.</div>;
   }
 
+  const isVisualPost = post.postType === "visual" && post.visualStyle;
+
   return (
-    <div className="p-10 max-w-3xl mx-auto">
-      <div className="flex items-start justify-between mb-4 gap-4">
-        <h1 className="text-4xl font-bold text-gray-800">
-          {post.title}
-        </h1>
+    <div
+      className={
+        isVisualPost
+          ? VISUAL_POST_SHELL_CLASS
+          : "p-6 sm:p-10 max-w-3xl mx-auto"
+      }
+    >
+      <div className="flex items-start justify-between mb-6 gap-4">
+        {!isVisualPost && (
+          <h1 className="text-4xl font-bold text-gray-800">
+            {post.title}
+          </h1>
+        )}
+
+        {isVisualPost && <div className="flex-1" />}
 
         <Link
           to={`/post/${post.id}/edit`}
@@ -54,21 +68,35 @@ function Post() {
         </Link>
       </div>
 
-      <div className="text-lg text-gray-700 leading-relaxed mb-10 whitespace-pre-line">
-        {post.content}
-      </div>
-
-      {post.images.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
-          {post.images.map((image) => (
-            <img
-              key={image.id}
-              src={image.url}
-              alt={post.title}
-              className="w-full rounded-xl object-cover"
-            />
-          ))}
+      {isVisualPost ? (
+        <div className="mb-10">
+          <VisualPostRenderer
+            title={post.title}
+            content={post.content}
+            style={post.visualStyle ?? DEFAULT_VISUAL_STYLE}
+            images={post.images}
+            layout={post.visualLayout}
+          />
         </div>
+      ) : (
+        <>
+          <div className="text-lg text-gray-700 leading-relaxed mb-10 whitespace-pre-line">
+            {post.content}
+          </div>
+
+          {post.images.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
+              {post.images.map((image) => (
+                <img
+                  key={image.id}
+                  src={image.url}
+                  alt={post.title}
+                  className="w-full rounded-xl object-cover"
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       <Link

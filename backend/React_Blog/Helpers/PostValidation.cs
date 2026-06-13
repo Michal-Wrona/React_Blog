@@ -1,3 +1,5 @@
+using React_Blog.Entities;
+
 namespace React_Blog.Helpers
 {
     public static class PostValidation
@@ -22,6 +24,17 @@ namespace React_Blog.Helpers
                 return "Treść może zawierać maksymalnie połowę znaków białych.";
 
             return null;
+        }
+
+        public static string? ValidateVisualPost(Post post)
+        {
+            if (post.PostType != PostType.Visual)
+                return null;
+
+            if (post.VisualStyle == null)
+                return "Post wizualny wymaga ustawień wyglądu.";
+
+            return VisualStyleSettings.Validate(post.VisualStyle);
         }
     }
 }
