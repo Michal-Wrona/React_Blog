@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Http;
+﻿using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using React_Blog.Entities;
 using React_Blog.Helpers;
@@ -6,16 +7,19 @@ using React_Blog.Interfaces;
 
 namespace React_Blog.Controllers
 {
+    [Authorize]
     [Route("api/[controller]")]
     [ApiController]
     public class PostController(
         IPostRepository postRepository,
         IImageService imageService) : ControllerBase
     {
+        [AllowAnonymous]
         [HttpGet]
         public async Task<ActionResult<IEnumerable<Post>>> GetPosts()
             => Ok(await postRepository.GetPostsAsync());
 
+        [AllowAnonymous]
         [HttpGet("{id}")]
         public async Task<ActionResult<Post>> GetPost(int id)
         {
@@ -47,6 +51,8 @@ namespace React_Blog.Controllers
                 SanitizeVisualLayout(post.VisualLayout);
             }
 
+            post.AuthorId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
             await postRepository.AddPostAsync(post);
             return CreatedAtAction(nameof(GetPost), new { id = post.Id }, post);
         }
@@ -57,6 +63,7 @@ namespace React_Blog.Controllers
         {
             var post = await postRepository.GetPostForUpdateAsync(postId);
             if (post == null) return NotFound("Post not found");
+            if (!PostAuthorization.CanModify(User, post)) return Forbid();
 
             var imageCount = await postRepository.GetImageCountForPostAsync(postId);
             if (imageCount >= ImageSettings.MaxImagesPerPost)
@@ -82,6 +89,7 @@ namespace React_Blog.Controllers
         {
             var post = await postRepository.GetPostForUpdateAsync(postId);
             if (post == null) return NotFound("Post not found");
+            if (!PostAuthorization.CanModify(User, post)) return Forbid();
             if (post.PostType != PostType.Visual)
                 return BadRequest("Tylko posty wizualne mogą mieć tło graficzne.");
 
@@ -103,6 +111,7 @@ namespace React_Blog.Controllers
         {
             var post = await postRepository.GetPostForUpdateAsync(postId);
             if (post == null) return NotFound();
+            if (!PostAuthorization.CanModify(User, post)) return Forbid();
             if (post.PostType != PostType.Visual) return BadRequest();
 
             if (!string.IsNullOrEmpty(post.VisualStyle?.BackgroundImageUrl))
@@ -123,11 +132,13 @@ namespace React_Blog.Controllers
             if (image.PostId != postId) return BadRequest();
 
             var post = await postRepository.GetPostForUpdateAsync(postId);
+            if (post == null) return NotFound();
+            if (!PostAuthorization.CanModify(User, post)) return Forbid();
 
             imageService.DeleteImageFile(image.Url);
             await postRepository.DeleteImageAsync(imageId);
 
-            if (post?.VisualLayout != null)
+            if (post.VisualLayout != null)
             {
                 post.VisualLayout.Placements.RemoveAll(p => p.ImageId == imageId);
                 await postRepository.UpdatePostAsync(post);
@@ -150,6 +161,7 @@ namespace React_Blog.Controllers
         {
             var existing = await postRepository.GetPostForUpdateAsync(post.Id);
             if (existing == null) return NotFound();
+            if (!PostAuthorization.CanModify(User, existing)) return Forbid();
 
             var titleError = PostValidation.ValidateCreateTitle(post.Title);
             if (titleError != null) return BadRequest(titleError);
@@ -190,6 +202,10 @@ namespace React_Blog.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeletePost(int id)
         {
+            var post = await postRepository.GetPostByIdAsync(id);
+            if (post == null) return NotFound();
+            if (!PostAuthorization.CanModify(User, post)) return Forbid();
+
             await postRepository.DeletePostAsync(id);
             return NoContent();
         }

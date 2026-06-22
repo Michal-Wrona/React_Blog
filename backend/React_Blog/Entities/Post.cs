@@ -1,4 +1,6 @@
-﻿namespace React_Blog.Entities
+﻿using System.Text.Json.Serialization;
+
+namespace React_Blog.Entities
 {
     public class Post
     {
@@ -8,6 +10,11 @@
         public PostType PostType { get; set; } = PostType.Simple;
         public VisualStyle? VisualStyle { get; set; }
         public VisualLayout? VisualLayout { get; set; }
+        public string? AuthorId { get; set; }
+
+        [JsonIgnore]
+        public ApplicationUser? Author { get; set; }
+
         public ICollection<Image> Images { get; set; } = [];
     }
 }

@@ -1,73 +1,62 @@
-# React + TypeScript + Vite
+# React Blog
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A full-stack blog application built with React and ASP.NET Core 8. Users can browse posts without logging in, while authenticated authors can create and manage their own content. The app supports two post formats: simple text articles and visual posts with a custom canvas layout — images can be positioned freely, styled, and combined with flowing text.
 
-Currently, two official plugins are available:
+The backend exposes a REST API with cookie-based authentication, role-based access control, and automatic database migrations on startup. Images are uploaded, resized, and served from the API. The React frontend is a single-page app that talks to the backend through a Vite dev proxy.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Stack
 
-## React Compiler
+| Layer | Technologies |
+|-------|--------------|
+| Frontend | React 19, TypeScript, Vite, Tailwind CSS, React Router |
+| Backend | ASP.NET Core 8, EF Core, SQLite, ASP.NET Identity |
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Features
 
-## Expanding the ESLint configuration
+- **Simple posts** — classic title + text content
+- **Visual posts** — drag-and-drop image placement, typography and layout styling
+- **Image uploads** — JPEG/PNG/WebP, server-side optimization (ImageSharp)
+- **Authentication** — register, login, logout via HTTP-only cookies
+- **Authorization** — authors edit their own posts; admins can edit any post
+- **Rate limiting** — auth endpoints throttled to prevent brute-force attempts
+- **Swagger** — interactive API docs in Development mode
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Getting Started
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+**Requirements:** .NET 8 SDK, Node.js 20+
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+### Backend
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd backend/React_Blog
+dotnet run
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+API: `http://localhost:5185` · Swagger: `http://localhost:5185/swagger`
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Frontend
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+App: `http://localhost:5173` (proxies `/api` and `/uploads` to the backend)
+
+## Configuration
+
+Edit `backend/React_Blog/appsettings.json`:
+
+- `ConnectionStrings:DefaultConnection` — SQLite database file path
+- `Cors:AllowedOrigins` — allowed frontend origin(s)
+- `AdminSeed` — admin account created on first startup
+
+Default admin credentials: `admin@blog.local` / `TymczasoweHasloAdmin123!` — change the password before deploying.
+
+## Project Structure
+
+```
+backend/React_Blog/   # REST API, EF Core, migrations
+frontend/             # React SPA (Vite)
 ```
