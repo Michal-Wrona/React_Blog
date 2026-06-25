@@ -66,8 +66,9 @@ namespace React_Blog.Controllers
             if (!PostAuthorization.CanModify(User, post)) return Forbid();
 
             var imageCount = await postRepository.GetImageCountForPostAsync(postId);
-            if (imageCount >= ImageSettings.MaxImagesPerPost)
-                return BadRequest($"Maksymalnie {ImageSettings.MaxImagesPerPost} zdjęć na post.");
+            var maxImages = ImageSettings.GetMaxImagesForPost(post.PostType);
+            if (imageCount >= maxImages)
+                return BadRequest($"Maksymalnie {maxImages} zdjęć na post.");
 
             var result = await imageService.SaveImageAsync(file);
             if (result.Error != null) return BadRequest(result.Error);
@@ -141,6 +142,9 @@ namespace React_Blog.Controllers
             if (post.VisualLayout != null)
             {
                 post.VisualLayout.Placements.RemoveAll(p => p.ImageId == imageId);
+                foreach (var gallery in post.VisualLayout.Galleries)
+                    gallery.ImageIds.Remove(imageId);
+                post.VisualLayout.Galleries.RemoveAll(g => g.ImageIds.Count < ImageSettings.MinImagesPerGallery);
                 await postRepository.UpdatePostAsync(post);
             }
 
@@ -153,6 +157,12 @@ namespace React_Blog.Controllers
             {
                 if (placement.CaptionEnabled && placement.Caption != null)
                     placement.Caption = VisualLayoutSettings.SanitizeCaption(placement.Caption);
+            }
+
+            foreach (var gallery in layout.Galleries)
+            {
+                if (gallery.CaptionEnabled && gallery.Caption != null)
+                    gallery.Caption = VisualLayoutSettings.SanitizeCaption(gallery.Caption);
             }
         }
 
@@ -172,7 +182,11 @@ namespace React_Blog.Controllers
             existing.Title = post.Title;
             existing.Content = post.Content;
 
-            if (existing.PostType == PostType.Visual)
+            if (existing.PostType == PostType.Simple)
+            {
+                existing.ImageDisplayMode = post.ImageDisplayMode;
+            }
+            else if (existing.PostType == PostType.Visual)
             {
                 if (post.VisualStyle == null)
                     return BadRequest("Post wizualny wymaga ustawień wyglądu.");

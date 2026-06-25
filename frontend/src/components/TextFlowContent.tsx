@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { ImagePlacement, VisualStyle } from "../types";
+import type { GalleryPlacement, ImagePlacement, VisualStyle } from "../types";
 import { getFontSizeCss } from "../utils/postFormUtils";
 import {
   buildImageRects,
@@ -12,6 +12,7 @@ type TextFlowContentProps = {
   containerWidth: number;
   style: VisualStyle;
   placements: ImagePlacement[];
+  galleries?: GalleryPlacement[];
   placeholder?: boolean;
 };
 
@@ -20,6 +21,7 @@ function TextFlowContent({
   containerWidth,
   style,
   placements,
+  galleries = [],
   placeholder = false,
 }: TextFlowContentProps) {
   const fontSizeCss = getFontSizeCss(style.fontSize);
@@ -27,7 +29,7 @@ function TextFlowContent({
   const lineHeight = fontSizePx * 1.625;
 
   const flow = useMemo(() => {
-    const rects = buildImageRects(placements, containerWidth);
+    const rects = buildImageRects(placements, containerWidth, galleries);
     return layoutTextFlow(
       content,
       containerWidth,
@@ -35,7 +37,7 @@ function TextFlowContent({
       style.fontFamily,
       rects
     );
-  }, [content, containerWidth, fontSizePx, style.fontFamily, placements]);
+  }, [content, containerWidth, fontSizePx, style.fontFamily, placements, galleries]);
 
   return (
     <div

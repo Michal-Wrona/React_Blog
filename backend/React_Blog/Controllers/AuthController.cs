@@ -85,7 +85,7 @@ namespace React_Blog.Controllers
             {
                 Id = user.Id,
                 Email = user.Email!,
-                Roles = roles.ToList()
+                Roles = [..roles]
             };
         }
     }

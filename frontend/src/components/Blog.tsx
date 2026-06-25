@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { apiFetch } from "../api/client";
+import { useAuth } from "../hooks/useAuth";
 import type { Post } from "../types";
 
 function Blog() {
+  const { user } = useAuth();
   const [posts, setPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -10,7 +13,7 @@ function Blog() {
   useEffect(() => {
     async function fetchPosts() {
       try {
-        const response = await fetch("/api/Post");
+        const response = await apiFetch("/api/Post");
 
         if (!response.ok) {
           if (response.status >= 500) {
@@ -24,12 +27,12 @@ function Blog() {
 
         const data: Post[] = await response.json();
         setPosts(data);
-      } catch (error) {
+      } catch (fetchError) {
         const message =
-          error instanceof TypeError
+          fetchError instanceof TypeError
             ? "Nie można połączyć się z serwerem. Uruchom backend (dotnet watch) na porcie 5185."
-            : error instanceof Error
-              ? error.message
+            : fetchError instanceof Error
+              ? fetchError.message
               : "Wystąpił błąd podczas pobierania postów.";
         setError(message);
       } finally {
@@ -52,16 +55,23 @@ function Blog() {
     <div className="min-h-screen bg-purple-50 py-8">
       <div className="max-w-4xl mx-auto px-6">
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-4xl font-bold text-gray-800">
-            Blog
-          </h1>
+          <h1 className="text-4xl font-bold text-gray-800">Blog</h1>
 
-          <Link
-            to="/post/new"
-            className="bg-purple-600 hover:bg-purple-700 text-white font-medium px-4 py-2 rounded-xl transition-colors"
-          >
-            Dodaj post
-          </Link>
+          {user ? (
+            <Link
+              to="/post/new"
+              className="bg-purple-600 hover:bg-purple-700 text-white font-medium px-4 py-2 rounded-xl transition-colors"
+            >
+              Dodaj post
+            </Link>
+          ) : (
+            <Link
+              to="/login?returnUrl=%2Fpost%2Fnew"
+              className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium px-4 py-2 rounded-xl transition-colors"
+            >
+              Zaloguj się, aby dodać post
+            </Link>
+          )}
         </div>
 
         {posts.map((post) => (

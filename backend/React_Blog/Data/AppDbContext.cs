@@ -37,6 +37,7 @@ namespace React_Blog.Data
                 .OwnsOne(p => p.VisualLayout, layout =>
                 {
                     layout.OwnsMany(l => l.Placements);
+                    layout.OwnsMany(l => l.Galleries);
                     layout.ToJson("VisualLayout");
                 });
         }

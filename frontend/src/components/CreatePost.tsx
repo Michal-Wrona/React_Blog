@@ -1,12 +1,14 @@
 import { useRef, useState } from "react";
 import type { ChangeEvent, DragEvent, FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { apiFetch } from "../api/client";
 import type { Image, Post, CreatePostRequest, UpdatePostRequest } from "../types";
 import AlertModal from "./AlertModal";
+import ImageCarousel from "./ImageCarousel";
+import { MAX_IMAGES_SIMPLE } from "../constants/imageLimits";
 import { validateForm } from "../utils/postFormUtils";
 
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const MAX_IMAGES_PER_POST = 5;
 
 function CreatePost() {
   const navigate = useNavigate();
@@ -39,7 +41,7 @@ function CreatePost() {
 
     const newPost: CreatePostRequest = { title, content, postType: "simple" };
 
-    const response = await fetch("/api/Post", {
+    const response = await apiFetch("/api/Post", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -64,8 +66,8 @@ function CreatePost() {
       return;
     }
 
-    if (images.length >= MAX_IMAGES_PER_POST) {
-      setError(`Maksymalnie ${MAX_IMAGES_PER_POST} zdjęć na post.`);
+    if (images.length >= MAX_IMAGES_SIMPLE) {
+      setError(`Maksymalnie ${MAX_IMAGES_SIMPLE} zdjęć na post.`);
       return;
     }
 
@@ -81,7 +83,7 @@ function CreatePost() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(`/api/Post/${currentPostId}/add-photo`, {
+      const response = await apiFetch(`/api/Post/${currentPostId}/add-photo`, {
         method: "POST",
         body: formData,
       });
@@ -141,7 +143,7 @@ function CreatePost() {
     setDeletingImageId(imageId);
 
     try {
-      const response = await fetch(`/api/Post/${postId}/images/${imageId}`, {
+      const response = await apiFetch(`/api/Post/${postId}/images/${imageId}`, {
         method: "DELETE",
       });
 
@@ -177,9 +179,10 @@ function CreatePost() {
           id: postId,
           title,
           content,
+          imageDisplayMode: "carousel",
         };
 
-        const response = await fetch("/api/Post", {
+        const response = await apiFetch("/api/Post", {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
@@ -197,7 +200,7 @@ function CreatePost() {
 
       const newPost: CreatePostRequest = { title, content, postType: "simple" };
 
-      const response = await fetch("/api/Post", {
+      const response = await apiFetch("/api/Post", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -211,6 +214,18 @@ function CreatePost() {
       }
 
       const createdPost: Post = await response.json();
+
+      await apiFetch("/api/Post", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: createdPost.id,
+          title,
+          content,
+          imageDisplayMode: "carousel",
+        } satisfies UpdatePostRequest),
+      });
+
       navigate(`/post/${createdPost.id}`);
     } catch (error) {
       const message =
@@ -221,7 +236,8 @@ function CreatePost() {
     }
   }
 
-  const canAddMoreImages = images.length < MAX_IMAGES_PER_POST;
+  const canAddMoreImages = images.length < MAX_IMAGES_SIMPLE;
+  const imageUrls = images.map((image) => image.url);
 
   return (
     <div className="min-h-screen bg-purple-50 py-8">
@@ -274,32 +290,39 @@ function CreatePost() {
 
           <div>
             <span className="block text-gray-700 font-medium mb-2">
-              Zdjęcia
+              Galeria zdjęć
             </span>
 
             {images.length > 0 ? (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
-                {images.map((image) => (
-                  <div key={image.id} className="relative group">
-                    <img
-                      src={image.url}
-                      alt=""
-                      className="w-full h-32 rounded-xl object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteImage(image.id)}
-                      disabled={deletingImageId === image.id}
-                      className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white font-medium w-8 h-8 rounded-xl transition-colors flex items-center justify-center"
-                      aria-label="Usuń zdjęcie"
-                    >
-                      {deletingImageId === image.id ? "…" : "×"}
-                    </button>
-                  </div>
-                ))}
+              <div className="mb-3">
+                <ImageCarousel
+                  imageUrls={imageUrls}
+                  className="w-full max-w-2xl"
+                  showCounter={images.length > 1}
+                />
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
+                  {images.map((image) => (
+                    <div key={image.id} className="relative group">
+                      <img
+                        src={image.url}
+                        alt=""
+                        className="w-full h-20 rounded-xl object-cover opacity-80"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteImage(image.id)}
+                        disabled={deletingImageId === image.id}
+                        className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white font-medium w-7 h-7 rounded-lg flex items-center justify-center"
+                        aria-label="Usuń zdjęcie"
+                      >
+                        {deletingImageId === image.id ? "…" : "×"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             ) : (
-              <p className="text-gray-500 mb-3">Ten post nie ma jeszcze zdjęć.</p>
+              <p className="text-gray-500 mb-3">Galeria jest pusta — dodaj zdjęcie poniżej.</p>
             )}
 
             {canAddMoreImages && (
@@ -339,14 +362,14 @@ function CreatePost() {
                 </label>
 
                 <p className="text-gray-400 text-sm mt-3">
-                  JPG, PNG lub WebP · maks. {MAX_IMAGES_PER_POST} zdjęć
+                  JPG, PNG lub WebP · maks. {MAX_IMAGES_SIMPLE} zdjęć
                 </p>
               </div>
             )}
 
             {!canAddMoreImages && (
               <p className="text-gray-500 text-sm">
-                Osiągnięto limit {MAX_IMAGES_PER_POST} zdjęć na post.
+                Osiągnięto limit {MAX_IMAGES_SIMPLE} zdjęć na post.
               </p>
             )}
           </div>

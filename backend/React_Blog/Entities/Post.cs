@@ -10,6 +10,7 @@ namespace React_Blog.Entities
         public PostType PostType { get; set; } = PostType.Simple;
         public VisualStyle? VisualStyle { get; set; }
         public VisualLayout? VisualLayout { get; set; }
+        public ImageDisplayMode ImageDisplayMode { get; set; } = ImageDisplayMode.Carousel;
         public string? AuthorId { get; set; }
 
         [JsonIgnore]

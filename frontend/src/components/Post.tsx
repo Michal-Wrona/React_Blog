@@ -1,11 +1,15 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
+import { apiFetch } from "../api/client";
+import { useAuth } from "../hooks/useAuth";
 import type { Post as PostType } from "../types";
 import VisualPostRenderer from "./VisualPostRenderer";
+import ImageCarousel from "./ImageCarousel";
 import { DEFAULT_VISUAL_STYLE, VISUAL_POST_SHELL_CLASS } from "../utils/postFormUtils";
 
 function Post() {
   const { id } = useParams();
+  const { user } = useAuth();
   const [post, setPost] = useState<PostType | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -13,7 +17,7 @@ function Post() {
   useEffect(() => {
     async function fetchPost() {
       try {
-        const response = await fetch(`/api/Post/${id}`);
+        const response = await apiFetch(`/api/Post/${id}`);
 
         if (!response.ok) {
           throw new Error("Nie udało się pobrać posta.");
@@ -60,12 +64,14 @@ function Post() {
 
         {isVisualPost && <div className="flex-1" />}
 
-        <Link
-          to={`/post/${post.id}/edit`}
-          className="shrink-0 bg-purple-600 hover:bg-purple-700 text-white font-medium px-4 py-2 rounded-xl transition-colors"
-        >
-          Edytuj post
-        </Link>
+        {user && (
+          <Link
+            to={`/post/${post.id}/edit`}
+            className="shrink-0 bg-purple-600 hover:bg-purple-700 text-white font-medium px-4 py-2 rounded-xl transition-colors"
+          >
+            Edytuj post
+          </Link>
+        )}
       </div>
 
       {isVisualPost ? (
@@ -85,15 +91,13 @@ function Post() {
           </div>
 
           {post.images.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
-              {post.images.map((image) => (
-                <img
-                  key={image.id}
-                  src={image.url}
-                  alt={post.title}
-                  className="w-full rounded-xl object-cover"
-                />
-              ))}
+            <div className="mb-10 max-w-2xl">
+              <ImageCarousel
+                imageUrls={post.images.map((image) => image.url)}
+                className="w-full"
+                alt={post.title}
+                showCounter={post.images.length > 1}
+              />
             </div>
           )}
         </>

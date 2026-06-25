@@ -242,6 +242,9 @@ namespace React_Blog.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("ImageDisplayMode")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int>("PostType")
                         .HasColumnType("INTEGER");
 
@@ -379,6 +382,53 @@ namespace React_Blog.Data.Migrations
                                     b2.WithOwner()
                                         .HasForeignKey("VisualLayoutPostId");
                                 });
+
+                            b1.OwnsMany("React_Blog.Entities.GalleryPlacement", "Galleries", b2 =>
+                                {
+                                    b2.Property<int>("VisualLayoutPostId")
+                                        .HasColumnType("INTEGER");
+
+                                    b2.Property<int>("Id")
+                                        .ValueGeneratedOnAdd()
+                                        .HasColumnType("INTEGER");
+
+                                    b2.Property<double>("AspectRatio")
+                                        .HasColumnType("REAL");
+
+                                    b2.Property<string>("Caption")
+                                        .HasColumnType("TEXT");
+
+                                    b2.Property<bool>("CaptionEnabled")
+                                        .HasColumnType("INTEGER");
+
+                                    b2.Property<string>("GalleryId")
+                                        .IsRequired()
+                                        .HasColumnType("TEXT");
+
+                                    b2.PrimitiveCollection<string>("ImageIds")
+                                        .HasColumnType("TEXT");
+
+                                    b2.Property<double>("Left")
+                                        .HasColumnType("REAL");
+
+                                    b2.Property<double>("Top")
+                                        .HasColumnType("REAL");
+
+                                    b2.Property<double>("Width")
+                                        .HasColumnType("REAL");
+
+                                    b2.Property<int>("ZIndex")
+                                        .HasColumnType("INTEGER");
+
+                                    b2.HasKey("VisualLayoutPostId", "Id");
+
+                                    b2.ToTable("Posts");
+
+                                    b2.WithOwner()
+                                        .HasForeignKey("VisualLayoutPostId");
+                                });
+
+                            b1.Navigation("Galleries");
 
                             b1.Navigation("Placements");
                         });

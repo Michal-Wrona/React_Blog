@@ -1,4 +1,4 @@
-import type { ImagePlacement } from "../types";
+import type { GalleryPlacement, ImagePlacement } from "../types";
 import { placementToPixels } from "./visualLayoutUtils";
 
 export type ImageRect = {
@@ -103,9 +103,10 @@ export function fitTextToWidth(
 
 export function buildImageRects(
   placements: ImagePlacement[],
-  containerWidth: number
+  containerWidth: number,
+  galleries: GalleryPlacement[] = []
 ): ImageRect[] {
-  return placements.map((placement) => {
+  const singleRects = placements.map((placement) => {
     const { left, top, width, height } = placementToPixels(
       placement,
       containerWidth
@@ -120,6 +121,24 @@ export function buildImageRects(
       height: height + captionSpace,
     };
   });
+
+  const galleryRects = galleries.map((gallery, index) => {
+    const { left, top, width, height } = placementToPixels(
+      gallery,
+      containerWidth
+    );
+    const captionSpace = gallery.captionEnabled ? CAPTION_HEIGHT : 0;
+
+    return {
+      imageId: -(index + 1),
+      left,
+      top,
+      width,
+      height: height + captionSpace,
+    };
+  });
+
+  return [...singleRects, ...galleryRects];
 }
 
 type HorizontalInterval = { start: number; end: number };

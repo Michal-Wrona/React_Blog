@@ -1,28 +1,38 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent, FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { apiFetch } from "../api/client";
 import type { Image, Post, PostType, UpdatePostRequest, VisualLayout, VisualStyle } from "../types";
 import AlertModal from "./AlertModal";
+import ImageCarousel from "./ImageCarousel";
 import PostStylePanel from "./PostStylePanel";
 import VisualPostCanvas from "./VisualPostCanvas";
 import VisualPostPreviewShell from "./VisualPostPreviewShell";
 import { DEFAULT_VISUAL_STYLE } from "../utils/postFormUtils";
 import {
+  createDefaultGallery,
   createDefaultPlacement,
   EMPTY_VISUAL_LAYOUT,
   loadImageAspectRatio,
   normalizeVisualLayout,
+  removeGallery,
   removePlacement,
+  upsertGallery,
   upsertPlacement,
 } from "../utils/visualLayoutUtils";
+import {
+  getMaxImagesForPostType,
+  MAX_GALLERY_IMAGES,
+  MIN_GALLERY_IMAGES,
+} from "../constants/imageLimits";
 
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const MAX_IMAGES_PER_POST = 5;
 
 function EditPost() {
   const { id } = useParams();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const galleryFileInputRef = useRef<HTMLInputElement>(null);
 
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -30,6 +40,7 @@ function EditPost() {
   const [visualStyle, setVisualStyle] = useState<VisualStyle>(DEFAULT_VISUAL_STYLE);
   const [visualLayout, setVisualLayout] = useState<VisualLayout>(EMPTY_VISUAL_LAYOUT);
   const [selectedImageId, setSelectedImageId] = useState<number | null>(null);
+  const [selectedGalleryId, setSelectedGalleryId] = useState<string | null>(null);
   const [images, setImages] = useState<Image[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -42,7 +53,7 @@ function EditPost() {
   useEffect(() => {
     async function fetchPost() {
       try {
-        const response = await fetch(`/api/Post/${id}`);
+        const response = await apiFetch(`/api/Post/${id}`);
 
         if (!response.ok) {
           throw new Error("Nie udało się pobrać posta.");
@@ -80,7 +91,7 @@ function EditPost() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(`/api/Post/${id}/background-image`, {
+      const response = await apiFetch(`/api/Post/${id}/background-image`, {
         method: "POST",
         body: formData,
       });
@@ -90,7 +101,7 @@ function EditPost() {
         throw new Error(message || "Nie udało się dodać tła.");
       }
 
-      const url: string = await response.json();
+      const url = (await response.text()).replace(/^"|"$/g, "");
       setVisualStyle((previous) => ({ ...previous, backgroundImageUrl: url }));
     } catch (error) {
       const message =
@@ -105,7 +116,7 @@ function EditPost() {
     setError(null);
 
     try {
-      const response = await fetch(`/api/Post/${id}/background-image`, {
+      const response = await apiFetch(`/api/Post/${id}/background-image`, {
         method: "DELETE",
       });
 
@@ -127,8 +138,10 @@ function EditPost() {
       return;
     }
 
-    if (images.length >= MAX_IMAGES_PER_POST) {
-      setError(`Maksymalnie ${MAX_IMAGES_PER_POST} zdjęć na post.`);
+    const maxImages = getMaxImagesForPostType(postType);
+
+    if (images.length >= maxImages) {
+      setError(`Maksymalnie ${maxImages} zdjęć na post.`);
       return;
     }
 
@@ -139,7 +152,7 @@ function EditPost() {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(`/api/Post/${id}/add-photo`, {
+      const response = await apiFetch(`/api/Post/${id}/add-photo`, {
         method: "POST",
         body: formData,
       });
@@ -150,18 +163,21 @@ function EditPost() {
       }
 
       const createdImage: Image = await response.json();
-      const aspectRatio = await loadImageAspectRatio(createdImage.url);
-      const currentLayout = normalizeVisualLayout(visualLayout);
-      const placement = createDefaultPlacement(
-        createdImage,
-        aspectRatio,
-        currentLayout.placements.length
-      );
-      const nextLayout = upsertPlacement(currentLayout, placement);
-
       setImages((previous) => [...previous, createdImage]);
-      setVisualLayout(nextLayout);
-      setSelectedImageId(createdImage.id);
+
+      if (postType === "visual") {
+        const aspectRatio = await loadImageAspectRatio(createdImage.url);
+        const currentLayout = normalizeVisualLayout(visualLayout);
+        const placement = createDefaultPlacement(
+          createdImage,
+          aspectRatio,
+          currentLayout.placements.length + currentLayout.galleries.length
+        );
+        const nextLayout = upsertPlacement(currentLayout, placement);
+        setVisualLayout(nextLayout);
+        setSelectedImageId(createdImage.id);
+        setSelectedGalleryId(null);
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Wystąpił błąd podczas dodawania zdjęcia.";
@@ -171,6 +187,88 @@ function EditPost() {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
+    }
+  }
+
+  async function uploadGallery(files: FileList) {
+    if (postType !== "visual") {
+      return;
+    }
+
+    const fileArray = Array.from(files).filter((file) =>
+      ACCEPTED_IMAGE_TYPES.includes(file.type)
+    );
+
+    if (
+      fileArray.length < MIN_GALLERY_IMAGES ||
+      fileArray.length > MAX_GALLERY_IMAGES
+    ) {
+      setError(
+        `Galeria wymaga od ${MIN_GALLERY_IMAGES} do ${MAX_GALLERY_IMAGES} zdjęć.`
+      );
+      return;
+    }
+
+    const maxImages = getMaxImagesForPostType(postType);
+    if (images.length + fileArray.length > maxImages) {
+      setError(`Maksymalnie ${maxImages} zdjęć na post wizualny.`);
+      return;
+    }
+
+    setError(null);
+    setIsUploading(true);
+
+    try {
+      const uploadedImages: Image[] = [];
+
+      for (const file of fileArray) {
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const response = await apiFetch(`/api/Post/${id}/add-photo`, {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const message = await response.text();
+          throw new Error(message || "Nie udało się dodać zdjęcia do galerii.");
+        }
+
+        uploadedImages.push((await response.json()) as Image);
+      }
+
+      const aspectRatio = await loadImageAspectRatio(uploadedImages[0].url);
+      const currentLayout = normalizeVisualLayout(visualLayout);
+      const gallery = createDefaultGallery(
+        uploadedImages.map((image) => image.id),
+        aspectRatio,
+        currentLayout.placements.length + currentLayout.galleries.length
+      );
+      const nextLayout = upsertGallery(currentLayout, gallery);
+
+      setImages((previous) => [...previous, ...uploadedImages]);
+      setVisualLayout(nextLayout);
+      setSelectedGalleryId(gallery.galleryId);
+      setSelectedImageId(null);
+    } catch (uploadError) {
+      const message =
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Wystąpił błąd podczas dodawania galerii.";
+      setError(message);
+    } finally {
+      setIsUploading(false);
+      if (galleryFileInputRef.current) {
+        galleryFileInputRef.current.value = "";
+      }
+    }
+  }
+
+  function handleGalleryInputChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = event.target.files;
+    if (files && files.length > 0) {
+      uploadGallery(files);
     }
   }
 
@@ -206,7 +304,7 @@ function EditPost() {
     setDeletingImageId(imageId);
 
     try {
-      const response = await fetch(`/api/Post/${id}/images/${imageId}`, {
+      const response = await apiFetch(`/api/Post/${id}/images/${imageId}`, {
         method: "DELETE",
       });
 
@@ -217,12 +315,45 @@ function EditPost() {
       setImages((previous) => previous.filter((image) => image.id !== imageId));
       setVisualLayout((previous) => removePlacement(previous, imageId));
       setSelectedImageId(null);
+      setSelectedGalleryId(null);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Wystąpił błąd podczas usuwania zdjęcia.";
       setError(message);
     } finally {
       setDeletingImageId(null);
+    }
+  }
+
+  async function handleDeleteGallery(galleryId: string) {
+    const gallery = normalizeVisualLayout(visualLayout).galleries.find(
+      (item) => item.galleryId === galleryId
+    );
+    if (!gallery) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      for (const imageId of gallery.imageIds) {
+        const response = await apiFetch(`/api/Post/${id}/images/${imageId}`, {
+          method: "DELETE",
+        });
+        if (!response.ok) {
+          throw new Error("Nie udało się usunąć zdjęcia z galerii.");
+        }
+      }
+
+      setImages((previous) =>
+        previous.filter((image) => !gallery.imageIds.includes(image.id))
+      );
+      setVisualLayout((previous) => removeGallery(previous, galleryId));
+      setSelectedGalleryId(null);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Wystąpił błąd podczas usuwania galerii.";
+      setError(message);
     }
   }
 
@@ -236,10 +367,11 @@ function EditPost() {
         id: Number(id),
         title,
         content,
+        ...(postType === "simple" ? { imageDisplayMode: "carousel" as const } : {}),
         ...(postType === "visual" ? { visualStyle, visualLayout } : {}),
       };
 
-      const response = await fetch("/api/Post", {
+      const response = await apiFetch("/api/Post", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -263,8 +395,10 @@ function EditPost() {
     return <div className="p-8">Ładowanie posta...</div>;
   }
 
-  const canAddMoreImages = images.length < MAX_IMAGES_PER_POST;
+  const maxImages = getMaxImagesForPostType(postType);
+  const canAddMoreImages = images.length < maxImages;
   const isVisualPost = postType === "visual";
+  const imageUrls = images.map((image) => image.url);
 
   const titleContentFields = (
     <>
@@ -300,8 +434,49 @@ function EditPost() {
   const imagesSection = isVisualPost ? (
     <div>
       <span className="block text-gray-700 font-medium mb-2">
-        Dodaj zdjęcie na kanwas
+        Dodaj media na kanwas
       </span>
+
+      {canAddMoreImages && (
+        <div className="flex flex-wrap gap-3 mb-4">
+          <input
+            ref={fileInputRef}
+            id="image-upload"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={handleFileInputChange}
+            disabled={isUploading}
+            className="sr-only"
+          />
+          <label
+            htmlFor="image-upload"
+            className={`inline-block bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white font-medium px-4 py-2 rounded-xl transition-colors ${
+              isUploading ? "opacity-50 pointer-events-none" : "cursor-pointer"
+            }`}
+          >
+            Pojedyncze zdjęcie
+          </label>
+
+          <input
+            ref={galleryFileInputRef}
+            id="gallery-upload"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            onChange={handleGalleryInputChange}
+            disabled={isUploading}
+            className="sr-only"
+          />
+          <label
+            htmlFor="gallery-upload"
+            className={`inline-block bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white font-medium px-4 py-2 rounded-xl transition-colors ${
+              isUploading ? "opacity-50 pointer-events-none" : "cursor-pointer"
+            }`}
+          >
+            Galeria ({MIN_GALLERY_IMAGES}–{MAX_GALLERY_IMAGES} zdjęć)
+          </label>
+        </div>
+      )}
 
       {canAddMoreImages ? (
         <div
@@ -314,70 +489,57 @@ function EditPost() {
               : "border-gray-300 bg-white"
           }`}
         >
-          <p className="text-gray-600 mb-4">
+          <p className="text-gray-600 mb-2">
             {isUploading
-              ? "Wysyłanie zdjęcia..."
-              : "Przeciągnij i upuść zdjęcie tutaj"}
+              ? "Wysyłanie..."
+              : "Przeciągnij pojedyncze zdjęcie tutaj"}
           </p>
-
-          <input
-            ref={fileInputRef}
-            id="image-upload"
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            onChange={handleFileInputChange}
-            disabled={isUploading}
-            className="sr-only"
-          />
-
-          <label
-            htmlFor="image-upload"
-            className={`inline-block bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white font-medium px-4 py-2 rounded-xl transition-colors ${
-              isUploading ? "opacity-50 pointer-events-none" : "cursor-pointer"
-            }`}
-          >
-            Wybierz plik
-          </label>
-
-          <p className="text-gray-400 text-sm mt-3">
-            JPG, PNG lub WebP · maks. {MAX_IMAGES_PER_POST} zdjęć
+          <p className="text-gray-400 text-sm">
+            JPG, PNG lub WebP · maks. {maxImages} zdjęć
           </p>
         </div>
       ) : (
         <p className="text-gray-500 text-sm">
-          Osiągnięto limit {MAX_IMAGES_PER_POST} zdjęć na post.
+          Osiągnięto limit {maxImages} zdjęć na post.
         </p>
       )}
     </div>
   ) : (
     <div>
       <span className="block text-gray-700 font-medium mb-2">
-        Zdjęcia
+        Galeria zdjęć
       </span>
 
       {images.length > 0 ? (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
-          {images.map((image) => (
-            <div key={image.id} className="relative group">
-              <img
-                src={image.url}
-                alt=""
-                className="w-full h-32 rounded-xl object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => handleDeleteImage(image.id)}
-                disabled={deletingImageId === image.id}
-                className="absolute top-2 right-2 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white font-medium w-8 h-8 rounded-xl transition-colors flex items-center justify-center"
-                aria-label="Usuń zdjęcie"
-              >
-                {deletingImageId === image.id ? "…" : "×"}
-              </button>
-            </div>
-          ))}
+        <div className="mb-3">
+          <ImageCarousel
+            imageUrls={imageUrls}
+            className="w-full max-w-2xl"
+            showCounter={images.length > 1}
+          />
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
+            {images.map((image) => (
+              <div key={image.id} className="relative group">
+                <img
+                  src={image.url}
+                  alt=""
+                  className="w-full h-20 rounded-xl object-cover opacity-80"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleDeleteImage(image.id)}
+                  disabled={deletingImageId === image.id}
+                  className="absolute top-1 right-1 bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white font-medium w-7 h-7 rounded-lg flex items-center justify-center"
+                  aria-label="Usuń zdjęcie"
+                >
+                  {deletingImageId === image.id ? "…" : "×"}
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       ) : (
-        <p className="text-gray-500 mb-3">Ten post nie ma jeszcze zdjęć.</p>
+        <p className="text-gray-500 mb-3">Galeria jest pusta — dodaj zdjęcie poniżej.</p>
       )}
 
       {canAddMoreImages && (
@@ -417,14 +579,14 @@ function EditPost() {
           </label>
 
           <p className="text-gray-400 text-sm mt-3">
-            JPG, PNG lub WebP · maks. {MAX_IMAGES_PER_POST} zdjęć
+            JPG, PNG lub WebP · maks. {maxImages} zdjęć
           </p>
         </div>
       )}
 
       {!canAddMoreImages && images.length > 0 && (
         <p className="text-gray-500 text-sm">
-          Osiągnięto limit {MAX_IMAGES_PER_POST} zdjęć na post.
+          Osiągnięto limit {maxImages} zdjęć na post.
         </p>
       )}
     </div>
@@ -468,9 +630,12 @@ function EditPost() {
                   editable
                   placeholder
                   selectedImageId={selectedImageId}
+                  selectedGalleryId={selectedGalleryId}
                   onSelectImage={setSelectedImageId}
+                  onSelectGallery={setSelectedGalleryId}
                   onLayoutChange={setVisualLayout}
                   onDeleteImage={handleDeleteImage}
+                  onDeleteGallery={handleDeleteGallery}
                 />
               </VisualPostPreviewShell>
             </>
