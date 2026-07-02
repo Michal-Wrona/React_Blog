@@ -9,7 +9,7 @@ The backend exposes a REST API with cookie-based authentication, role-based acce
 | Layer | Technologies |
 |-------|--------------|
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS, React Router |
-| Backend | ASP.NET Core 8, EF Core, SQLite, ASP.NET Identity |
+| Backend | ASP.NET Core 8, EF Core, PostgreSQL, ASP.NET Identity |
 
 ## Features
 
@@ -23,7 +23,15 @@ The backend exposes a REST API with cookie-based authentication, role-based acce
 
 ## Getting Started
 
-**Requirements:** .NET 8 SDK, Node.js 20+
+**Requirements:** .NET 8 SDK, Node.js 20+, Docker Desktop
+
+### Database (PostgreSQL)
+
+```bash
+docker compose up -d
+```
+
+Starts PostgreSQL on `localhost:5432` (user: `blog`, password: `blog`, database: `reactblog`).
 
 ### Backend
 
@@ -48,7 +56,7 @@ App: `http://localhost:5173` (proxies `/api` and `/uploads` to the backend)
 
 Edit `backend/React_Blog/appsettings.json`:
 
-- `ConnectionStrings:DefaultConnection` — SQLite database file path
+- `ConnectionStrings:DefaultConnection` — PostgreSQL connection string
 - `Cors:AllowedOrigins` — allowed frontend origin(s)
 - `AdminSeed` — admin account created on first startup
 
@@ -57,6 +65,7 @@ Default admin credentials: `admin@blog.local` / `TymczasoweHasloAdmin123!` — c
 ## Project Structure
 
 ```
+docker-compose.yml    # PostgreSQL for local development
 backend/React_Blog/   # REST API, EF Core, migrations
 frontend/             # React SPA (Vite)
 ```
