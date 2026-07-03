@@ -12,7 +12,8 @@ namespace React_Blog.Helpers
         public const int MaxCanvasElements = 10;
 
         public static readonly string[] AllowedExtensions = [".jpg", ".jpeg", ".png", ".webp"];
-        public const string UploadFolder = "uploads/images";
+        public const string CloudinaryFolder = "react-blog/images";
+        public const string LegacyUploadFolder = "uploads/images";
 
         public static int GetMaxImagesForPost(PostType postType) =>
             postType == PostType.Visual ? MaxImagesPerVisualPost : MaxImagesPerSimplePost;

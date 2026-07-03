@@ -39,7 +39,7 @@ namespace React_Blog.Helpers
                 return "Niedozwolony rozmiar czcionki.";
 
             if (style.BackgroundImageUrl != null
-                && !style.BackgroundImageUrl.StartsWith("/uploads/images/", StringComparison.Ordinal))
+                && !ImageUrlValidation.IsAllowed(style.BackgroundImageUrl))
                 return "Nieprawidłowy adres tła graficznego.";
 
             return null;

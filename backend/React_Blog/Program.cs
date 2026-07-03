@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using CloudinaryDotNet;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -12,6 +13,23 @@ using React_Blog.Interfaces;
 using React_Blog.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+var cloudinarySettings = builder.Configuration
+    .GetSection(CloudinarySettings.SectionName)
+    .Get<CloudinarySettings>() ?? new CloudinarySettings();
+
+if (!cloudinarySettings.IsConfigured)
+{
+    throw new InvalidOperationException(
+        "Brak konfiguracji Cloudinary. Ustaw Cloudinary:CloudName, Cloudinary:ApiKey i Cloudinary:ApiSecret " +
+        "(np. przez dotnet user-secrets w katalogu backend/React_Blog).");
+}
+
+builder.Services.AddSingleton(_ =>
+    new Cloudinary(new Account(
+        cloudinarySettings.CloudName,
+        cloudinarySettings.ApiKey,
+        cloudinarySettings.ApiSecret)));
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
@@ -136,7 +154,7 @@ app.Use(async (context, next) =>
     context.Response.Headers["X-Frame-Options"] = "DENY";
     context.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
     context.Response.Headers["Content-Security-Policy"] =
-        "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none';";
+        "default-src 'self'; img-src 'self' data: blob: https://res.cloudinary.com; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none';";
     await next();
 });
 

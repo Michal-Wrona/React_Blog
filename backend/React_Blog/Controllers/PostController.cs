@@ -98,7 +98,7 @@ namespace React_Blog.Controllers
             if (result.Error != null) return BadRequest(result.Error);
 
             if (!string.IsNullOrEmpty(post.VisualStyle?.BackgroundImageUrl))
-                imageService.DeleteImageFile(post.VisualStyle.BackgroundImageUrl);
+                await imageService.DeleteImageFileAsync(post.VisualStyle.BackgroundImageUrl);
 
             post.VisualStyle ??= new VisualStyle();
             post.VisualStyle.BackgroundImageUrl = result.Url;
@@ -117,7 +117,7 @@ namespace React_Blog.Controllers
 
             if (!string.IsNullOrEmpty(post.VisualStyle?.BackgroundImageUrl))
             {
-                imageService.DeleteImageFile(post.VisualStyle.BackgroundImageUrl);
+                await imageService.DeleteImageFileAsync(post.VisualStyle.BackgroundImageUrl);
                 post.VisualStyle.BackgroundImageUrl = null;
                 await postRepository.UpdatePostAsync(post);
             }
@@ -136,7 +136,7 @@ namespace React_Blog.Controllers
             if (post == null) return NotFound();
             if (!PostAuthorization.CanModify(User, post)) return Forbid();
 
-            imageService.DeleteImageFile(image.Url);
+            await imageService.DeleteImageFileAsync(image.Url);
             await postRepository.DeleteImageAsync(imageId);
 
             if (post.VisualLayout != null)
