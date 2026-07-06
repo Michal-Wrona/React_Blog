@@ -216,9 +216,15 @@ namespace React_Blog.Controllers
         [HttpDelete("{id}")]
         public async Task<IActionResult> DeletePost(int id)
         {
-            var post = await postRepository.GetPostByIdAsync(id);
+            var post = await postRepository.GetPostByIdWithImagesAsync(id);
             if (post == null) return NotFound();
             if (!PostAuthorization.CanModify(User, post)) return Forbid();
+
+            foreach (var image in post.Images)
+                await imageService.DeleteImageFileAsync(image.Url);
+
+            if (!string.IsNullOrEmpty(post.VisualStyle?.BackgroundImageUrl))
+                await imageService.DeleteImageFileAsync(post.VisualStyle.BackgroundImageUrl);
 
             await postRepository.DeletePostAsync(id);
             return NoContent();

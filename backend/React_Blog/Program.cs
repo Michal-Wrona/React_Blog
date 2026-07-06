@@ -65,6 +65,7 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.Cookie.HttpOnly = true;
     options.Cookie.SameSite = SameSiteMode.Lax;
     options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        || builder.Environment.IsEnvironment("Testing")
         ? CookieSecurePolicy.SameAsRequest
         : CookieSecurePolicy.Always;
 
@@ -101,16 +102,19 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddRateLimiter(options =>
+if (!builder.Environment.IsEnvironment("Testing"))
 {
-    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    options.AddFixedWindowLimiter("auth", limiter =>
+    builder.Services.AddRateLimiter(options =>
     {
-        limiter.Window = TimeSpan.FromMinutes(1);
-        limiter.PermitLimit = 5;
-        limiter.QueueLimit = 0;
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        options.AddFixedWindowLimiter("auth", limiter =>
+        {
+            limiter.Window = TimeSpan.FromMinutes(1);
+            limiter.PermitLimit = 5;
+            limiter.QueueLimit = 0;
+        });
     });
-});
+}
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
@@ -160,10 +164,13 @@ app.Use(async (context, next) =>
 
 app.UseStaticFiles();
 app.UseCors("Frontend");
-app.UseRateLimiter();
+if (!app.Environment.IsEnvironment("Testing"))
+    app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
 app.Run();
+
+public partial class Program { }
